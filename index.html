@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<title>音乐播放器 合并下载</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
+body{padding:2rem;background:#f6f8fa;max-width:600px;margin:0 auto}
+.container{background:#fff;padding:2rem;border-radius:12px;box-shadow:0 2px 10px #0001}
+h1{font-size:1.4rem;margin-bottom:1rem;color:#222}
+.btn{
+background:#0070f3;color:#fff;border:none;padding:1rem 1.5rem;
+border-radius:8px;font-size:1rem;cursor:pointer;width:100%;margin:1rem 0
+}
+.btn:disabled{background:#999;cursor:not-allowed}
+.log{
+background:#f1f3f4;padding:1rem;border-radius:8px;
+min-height:6rem;white-space:pre-wrap;font-size:.9rem;color:#333
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Music Player 完整安装包</h1>
+<button class="btn" id="startBtn">下载并自动合并APK</button>
+<div class="log" id="log"></div>
+</div>
+
+<script>
+// 已按你的文件：Music player.apk 自动配置好
+const CONFIG = {
+  finalFileName: "Music player_完整.apk",
+  partBase: "Music player.apk",
+  partCount: 2,
+  baseUrl: ""
+};
+
+function log(text) {
+  const el = document.getElementById("log");
+  el.textContent += text + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+async function downloadPart(index) {
+  const suffix = String(index).padStart(3, "0");
+  const url = CONFIG.baseUrl + CONFIG.partBase + "." + suffix;
+  log(`正在下载分卷 ${index}/${CONFIG.partCount}`);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`分卷${index}下载失败，状态码：${resp.status}`);
+  return await resp.arrayBuffer();
+}
+
+function mergeAllBuffers(buffers) {
+  const totalSize = buffers.reduce((t, b) => t + b.byteLength, 0);
+  const merged = new Uint8Array(totalSize);
+  let pos = 0;
+  for (const buf of buffers) {
+    merged.set(new Uint8Array(buf), pos);
+    pos += buf.byteLength;
+  }
+  return new Blob([merged], {
+    type: "application/vnd.android.package-archive"
+  });
+}
+
+function saveBlob(blob, fileName) {
+  const a = document.createElement("a");
+  const u = URL.createObjectURL(blob);
+  a.href = u;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(u), 30000);
+}
+
+document.getElementById("startBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("startBtn");
+  btn.disabled = true;
+  btn.textContent = "处理中...";
+  log("=== 开始自动下载合并 ===");
+
+  try {
+    const buffers = [];
+    for (let i = 1; i <= CONFIG.partCount; i++) {
+      const buf = await downloadPart(i);
+      buffers.push(buf);
+      log(`分卷${i} 下载完成`);
+    }
+
+    log("=== 正在合并所有分卷 ===");
+    const finalBlob = mergeAllBuffers(buffers);
+    log(`合并完成，总大小：${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
+
+    log("=== 生成下载链接 ===");
+    saveBlob(finalBlob, CONFIG.finalFileName);
+    log("✅ 全部完成！APK 已保存到下载文件夹");
+  } catch (err) {
+    log("❌ 错误：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "重新下载合并";
+  }
+});
+</script>
+</body>
+</html>
